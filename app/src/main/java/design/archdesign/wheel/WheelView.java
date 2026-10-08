@@ -26,6 +26,7 @@ class WheelView extends View {
         void onLaunch(String pkg);
         void onClose();
         void onSettings();
+        void onCompose();
     }
 
     private static final int[] COLORS = {0xFF00E5FF, 0xFFFF5A4F, 0xFF3DFF7A, 0xFFB46BFF, 0xFFFFE14D, 0xFFFFB020,
@@ -47,6 +48,7 @@ class WheelView extends View {
 
     private float cx, cy, R, nodeR, hubR;
     private final RectF editBox = new RectF();
+    private final RectF mailBox = new RectF();
     private float spin = 0f;
 
     WheelView(Context c, List<String> apps, Listener l) {
@@ -120,15 +122,26 @@ class WheelView extends View {
         stroke.setColor(0xFF00E5FF);
         c.drawCircle(cx, cy, hubR, stroke);
         small.setColor(0xFFFF9A1F);
-        c.drawText("ARCHDESIGN", cx, cy - hubR * 0.42f, small);
+        c.drawText("ARCHDESIGN", cx, cy - hubR * 0.58f, small);
         String t = new SimpleDateFormat("h:mm", Locale.getDefault()).format(new Date());
-        c.drawText(t, cx, cy + clock.getTextSize() * 0.15f, clock);
+        c.drawText(t, cx, cy - hubR * 0.12f, clock);
         small.setColor(0xFFDFF7FF);
         c.drawText(new SimpleDateFormat("EEE, MMM d", Locale.getDefault()).format(new Date()).toUpperCase(Locale.getDefault()),
-                cx, cy + hubR * 0.36f, small);
+                cx, cy + hubR * 0.12f, small);
+
+        // NEW EMAIL pill
+        float ts = small.getTextSize();
+        float mw = small.measureText("\u2709  NEW EMAIL") / 2f + 14 * d, my = cy + hubR * 0.42f;
+        mailBox.set(cx - mw, my - ts * 1.25f, cx + mw, my + ts * 0.65f);
+        node.setShader(null);
+        node.setColor(0xFFFF9A1F);
+        c.drawRoundRect(mailBox, mailBox.height() / 2f, mailBox.height() / 2f, node);
+        small.setColor(0xFF03080F);
+        c.drawText("\u2709  NEW EMAIL", cx, my, small);
+
         small.setColor(0xFF00E5FF);
-        float ew = small.measureText("EDIT APPS") / 2f + 10 * d, ey = cy + hubR * 0.62f;
-        editBox.set(cx - ew, ey - small.getTextSize(), cx + ew, ey + small.getTextSize() * 0.6f);
+        float ew = small.measureText("EDIT APPS") / 2f + 10 * d, ey = cy + hubR * 0.74f;
+        editBox.set(cx - ew, ey - ts, cx + ew, ey + ts * 0.6f);
         c.drawText("EDIT APPS", cx, ey, small);
 
         if (pkgs.isEmpty()) {
@@ -168,6 +181,10 @@ class WheelView extends View {
                 listener.onLaunch(pkgs.get(i));
                 return true;
             }
+        }
+        if (mailBox.contains(x, y)) {
+            listener.onCompose();
+            return true;
         }
         if (editBox.contains(x, y)) {
             listener.onSettings();

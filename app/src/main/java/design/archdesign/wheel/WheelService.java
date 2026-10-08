@@ -8,6 +8,7 @@ import android.app.Service;
 import android.content.Intent;
 import android.content.pm.ServiceInfo;
 import android.graphics.PixelFormat;
+import android.net.Uri;
 import android.os.Build;
 import android.os.Handler;
 import android.os.IBinder;
@@ -163,6 +164,7 @@ public class WheelService extends Service {
             @Override public void onLaunch(String pkg) { launch(pkg); }
             @Override public void onClose() { closeWheel(); }
             @Override public void onSettings() { openSettings(); }
+            @Override public void onCompose() { compose(); }
         });
         WindowManager.LayoutParams lp = new WindowManager.LayoutParams(
                 WindowManager.LayoutParams.MATCH_PARENT, WindowManager.LayoutParams.MATCH_PARENT,
@@ -179,6 +181,20 @@ public class WheelService extends Service {
             wheel = null;
         }
         if (bubble != null) bubble.setVisibility(View.VISIBLE);
+    }
+
+    /** Opens a blank new email, in Gmail when it's installed. */
+    private void compose() {
+        closeWheel();
+        Intent i = new Intent(Intent.ACTION_SENDTO, Uri.parse("mailto:"));
+        i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+        Intent gmail = new Intent(i).setPackage("com.google.android.gm");
+        try {
+            if (gmail.resolveActivity(getPackageManager()) != null) startActivity(gmail);
+            else startActivity(i);
+        } catch (Exception e) {
+            Toast.makeText(this, "No email app found.", Toast.LENGTH_SHORT).show();
+        }
     }
 
     private void launch(String pkg) {
