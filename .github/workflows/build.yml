@@ -16,6 +16,11 @@ jobs:
         with:
           distribution: temurin
           java-version: '17'
+      - name: Keep the same signing key between builds
+        uses: actions/cache@v4
+        with:
+          path: ~/.android/debug.keystore
+          key: archdesign-wheel-debug-key
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.7'
