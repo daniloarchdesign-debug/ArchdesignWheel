@@ -24,6 +24,7 @@ import java.util.Locale;
 class WheelView extends View {
     interface Listener {
         void onLaunch(String pkg);
+        void onOpenLink(String url);
         void onClose();
         void onSettings();
         void onCompose();
@@ -36,6 +37,9 @@ class WheelView extends View {
     private final List<String> pkgs = new ArrayList<>();
     private final List<Drawable> icons = new ArrayList<>();
     private final List<String> labels = new ArrayList<>();
+    private final List<Prefs.Link> links = new ArrayList<>();
+    private final Paint linkFill = new Paint(Paint.ANTI_ALIAS_FLAG);
+    private final TextPaint glyph = new TextPaint(Paint.ANTI_ALIAS_FLAG);
     private final float d;
 
     private final Paint dim = new Paint();
@@ -51,7 +55,7 @@ class WheelView extends View {
     private final RectF mailBox = new RectF();
     private float spin = 0f;
 
-    WheelView(Context c, List<String> apps, Listener l) {
+    WheelView(Context c, List<String> apps, List<Prefs.Link> webLinks, Listener l) {
         super(c);
         listener = l;
         d = getResources().getDisplayMetrics().density;
@@ -67,6 +71,9 @@ class WheelView extends View {
                 // app was removed
             }
         }
+        links.addAll(webLinks);
+        glyph.setTextAlign(Paint.Align.CENTER);
+        glyph.setTypeface(Typeface.create(Typeface.DEFAULT, Typeface.BOLD));
         dim.setColor(0xB3000306);
         stroke.setStyle(Paint.Style.STROKE);
         label.setColor(0xFFDFF7FF);
@@ -88,14 +95,19 @@ class WheelView extends View {
         cy = h / 2f;
         R = Math.min(w, h) * 0.36f;
         R = Math.min(R, 230 * d);
-        nodeR = Math.max(26 * d, Math.min(36 * d, R * 0.22f));
+        int n = Math.max(count(), 1);
+        nodeR = Math.max(22 * d, Math.min(36 * d, R * 0.22f));
+        nodeR = Math.min(nodeR, (float) (R * Math.PI / n) * 0.78f);   // keep buttons from overlapping
+        glyph.setTextSize(nodeR * 0.9f);
         hubR = R * 0.48f;
         clock.setTextSize(hubR * 0.42f);
         small.setTextSize(Math.max(10 * d, hubR * 0.11f));
     }
 
+    private int count() { return pkgs.size() + links.size(); }
+
     private float[] pos(int i) {
-        int n = Math.max(pkgs.size(), 1);
+        int n = Math.max(count(), 1);
         double a = -Math.PI / 2 + i * 2 * Math.PI / n;
         return new float[]{cx + (float) (R * Math.cos(a)), cy + (float) (R * Math.sin(a))};
     }
@@ -140,13 +152,16 @@ class WheelView extends View {
         c.drawText("\u2709  NEW EMAIL", cx, my, small);
 
         small.setColor(0xFF00E5FF);
-        float ew = small.measureText("EDIT APPS") / 2f + 10 * d, ey = cy + hubR * 0.74f;
-        editBox.set(cx - ew, ey - ts, cx + ew, ey + ts * 0.6f);
-        c.drawText("EDIT APPS", cx, ey, small);
+        float ew = small.measureText("\u2699  SETTINGS") / 2f + 12 * d, ey = cy + hubR * 0.76f;
+        editBox.set(cx - ew, ey - ts * 1.25f, cx + ew, ey + ts * 0.65f);
+        stroke.setColor(0xFF00E5FF);
+        stroke.setStrokeWidth(1.5f * d);
+        c.drawRoundRect(editBox, editBox.height() / 2f, editBox.height() / 2f, stroke);
+        c.drawText("\u2699  SETTINGS", cx, ey, small);
 
-        if (pkgs.isEmpty()) {
+        if (count() == 0) {
             label.setColor(0xFFFF9A1F);
-            c.drawText("Tap EDIT APPS to choose your apps", cx, cy + R + 30 * d, label);
+            c.drawText("Tap SETTINGS to choose apps and links", cx, cy + R + 30 * d, label);
             label.setColor(0xFFDFF7FF);
         }
 
@@ -167,6 +182,24 @@ class WheelView extends View {
             c.drawText(name.toString(), p[0], p[1] + nodeR + 14 * d, label);
         }
 
+        // web link buttons
+        for (int j = 0; j < links.size(); j++) {
+            Prefs.Link l = links.get(j);
+            float[] p = pos(pkgs.size() + j);
+            node.setShader(new RadialGradient(p[0], p[1] - nodeR * 0.3f, nodeR * 1.3f, 0xFF0E2236, 0xFF050D18, Shader.TileMode.CLAMP));
+            c.drawCircle(p[0], p[1], nodeR, node);
+            linkFill.setColor((l.color & 0x00FFFFFF) | 0x33000000);
+            c.drawCircle(p[0], p[1], nodeR * 0.78f, linkFill);
+            stroke.setColor(l.color);
+            stroke.setStrokeWidth(2.5f * d);
+            c.drawCircle(p[0], p[1], nodeR, stroke);
+            String letter = l.name.isEmpty() ? "\u2197" : l.name.substring(0, 1).toUpperCase(Locale.getDefault());
+            glyph.setColor(l.color);
+            c.drawText(letter, p[0], p[1] + glyph.getTextSize() * 0.36f, glyph);
+            CharSequence name = TextUtils.ellipsize(l.name, label, nodeR * 2.6f, TextUtils.TruncateAt.END);
+            c.drawText(name.toString(), p[0], p[1] + nodeR + 14 * d, label);
+        }
+
         spin = (spin + 0.6f) % 360f;
         postInvalidateDelayed(33);
     }
@@ -179,6 +212,13 @@ class WheelView extends View {
             float[] p = pos(i);
             if (Math.hypot(x - p[0], y - p[1]) <= nodeR * 1.25f) {
                 listener.onLaunch(pkgs.get(i));
+                return true;
+            }
+        }
+        for (int j = 0; j < links.size(); j++) {
+            float[] p = pos(pkgs.size() + j);
+            if (Math.hypot(x - p[0], y - p[1]) <= nodeR * 1.25f) {
+                listener.onOpenLink(links.get(j).url);
                 return true;
             }
         }

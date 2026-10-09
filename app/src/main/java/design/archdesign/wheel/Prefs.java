@@ -4,6 +4,9 @@ import android.content.Context;
 import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
 
+import org.json.JSONArray;
+import org.json.JSONObject;
+
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
@@ -50,6 +53,45 @@ final class Prefs {
 
     static void saveApps(Context c, Collection<String> apps) {
         sp(c).edit().putString("apps", String.join(",", apps)).apply();
+    }
+
+    /** A web address shown as a button on the wheel. */
+    static final class Link {
+        final String name, url;
+        final int color;
+        Link(String name, String url, int color) { this.name = name; this.url = url; this.color = color; }
+    }
+
+    static final int MAX_LINKS = 8;
+
+    static List<Link> links(Context c) {
+        SharedPreferences p = sp(c);
+        if (!p.getBoolean("linksSeeded", false)) {
+            List<Link> first = new ArrayList<>();
+            first.add(new Link("Jobs", "https://claude.ai/artifact/VHWP9PuJsEWT9wkJEKkbXx", 0xFF3DFF7A));
+            saveLinks(c, first);
+            p.edit().putBoolean("linksSeeded", true).apply();
+            return first;
+        }
+        List<Link> out = new ArrayList<>();
+        try {
+            JSONArray a = new JSONArray(p.getString("links", "[]"));
+            for (int i = 0; i < a.length(); i++) {
+                JSONObject o = a.getJSONObject(i);
+                out.add(new Link(o.optString("name"), o.optString("url"), o.optInt("color", 0xFF00E5FF)));
+            }
+        } catch (Exception ignored) {
+            // bad data: start empty
+        }
+        return out;
+    }
+
+    static void saveLinks(Context c, List<Link> links) {
+        JSONArray a = new JSONArray();
+        try {
+            for (Link l : links) a.put(new JSONObject().put("name", l.name).put("url", l.url).put("color", l.color));
+        } catch (Exception ignored) {}
+        sp(c).edit().putString("links", a.toString()).apply();
     }
 
     static int x(Context c, int def) { return sp(c).getInt("x", def); }

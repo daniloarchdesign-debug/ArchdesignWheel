@@ -1,6 +1,7 @@
 package design.archdesign.wheel;
 
 import android.app.Activity;
+import android.app.AlertDialog;
 import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.content.pm.ResolveInfo;
@@ -11,10 +12,13 @@ import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
 import android.provider.Settings;
+import android.text.InputType;
+import android.util.Patterns;
 import android.view.Gravity;
 import android.view.View;
 import android.widget.Button;
 import android.widget.CheckBox;
+import android.widget.EditText;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.TextView;
@@ -35,6 +39,11 @@ public class MainActivity extends Activity {
     private TextView status;
     private Button permBtn, startBtn;
     private final Set<String> chosen = new LinkedHashSet<>();
+    private List<Prefs.Link> links;
+    private LinearLayout linkList;
+
+    /** Colors you can pick for a web link button. */
+    private static final int[] LINK_COLORS = {0xFF00E5FF, 0xFFFF9A1F, 0xFF3DFF7A, 0xFFB46BFF, 0xFFFFE14D, 0xFFFF5A4F, 0xFF2F8CFF, 0xFFFF2BD6};
 
     @Override
     protected void onCreate(Bundle state) {
@@ -44,6 +53,7 @@ public class MainActivity extends Activity {
             requestPermissions(new String[]{"android.permission.POST_NOTIFICATIONS"}, 1);
         }
         chosen.addAll(Prefs.apps(this));
+        links = Prefs.links(this);
 
         int pad = dp(18);
         ScrollView scroll = new ScrollView(this);
@@ -54,7 +64,7 @@ public class MainActivity extends Activity {
         root.setPadding(pad, dp(36), pad, dp(36));
         scroll.addView(root);
 
-        root.addView(text("ARCHDESIGN WHEEL", 24, CYAN, true));
+        root.addView(text("ARCHDESIGN WHEEL  \u00b7  SETTINGS", 24, CYAN, true));
         root.addView(text("A round launcher that floats on top of every app. Drag the bubble anywhere. "
                 + "Tap it to open your wheel of apps. Long-press it to come back to this screen.", 15, MUTED, false));
 
@@ -66,7 +76,15 @@ public class MainActivity extends Activity {
 
         status = text("", 15, ORANGE, true);
         root.addView(status);
-        root.addView(text("3.  Tick the apps for your wheel (up to " + MAX + "). They go around the wheel in the order you tick them.", 15, INK, true));
+        root.addView(text("3.  Web links on your wheel", 18, CYAN, true));
+        root.addView(text("Any web address can be a button on the wheel. Tap a link below to change it.", 14, MUTED, false));
+        linkList = new LinearLayout(this);
+        linkList.setOrientation(LinearLayout.VERTICAL);
+        root.addView(linkList);
+        root.addView(button("+  Add a web link", v -> editLink(-1)));
+        renderLinks();
+
+        root.addView(text("4.  Tick the apps for your wheel (up to " + MAX + "). They go around the wheel in the order you tick them.", 15, INK, true));
 
         LinearLayout list = new LinearLayout(this);
         list.setOrientation(LinearLayout.VERTICAL);
@@ -86,7 +104,7 @@ public class MainActivity extends Activity {
         permBtn.setEnabled(!allowed);
         permBtn.setText(allowed ? "✓  Display over other apps is allowed" : "1.  Allow display over other apps");
         startBtn.setText(WheelService.running ? "Stop the wheel" : "2.  Start the wheel");
-        status.setText(chosen.size() + " apps on your wheel");
+        status.setText(chosen.size() + " apps and " + links.size() + (links.size() == 1 ? " link" : " links") + " on your wheel");
     }
 
     private void toggle() {
@@ -135,6 +153,150 @@ public class MainActivity extends Activity {
                 refresh();
             });
             list.addView(cb);
+        }
+    }
+
+    // ---------- web links ----------
+
+    private void renderLinks() {
+        linkList.removeAllViews();
+        if (links.isEmpty()) linkList.addView(text("No links yet.", 14, MUTED, false));
+        for (int i = 0; i < links.size(); i++) {
+            final int idx = i;
+            Prefs.Link l = links.get(i);
+            LinearLayout row = new LinearLayout(this);
+            row.setOrientation(LinearLayout.HORIZONTAL);
+            row.setGravity(Gravity.CENTER_VERTICAL);
+            row.setPadding(dp(4), dp(10), 0, dp(10));
+            row.setOnClickListener(v -> editLink(idx));
+
+            View dot = new View(this);
+            GradientDrawable g = new GradientDrawable();
+            g.setShape(GradientDrawable.OVAL);
+            g.setColor(l.color);
+            dot.setBackground(g);
+            LinearLayout.LayoutParams dl = new LinearLayout.LayoutParams(dp(26), dp(26));
+            dl.rightMargin = dp(14);
+            row.addView(dot, dl);
+
+            LinearLayout words = new LinearLayout(this);
+            words.setOrientation(LinearLayout.VERTICAL);
+            TextView name = text(l.name, 17, INK, true);
+            name.setPadding(0, 0, 0, 0);
+            TextView url = text(l.url, 12, MUTED, false);
+            url.setPadding(0, dp(2), 0, 0);
+            url.setSingleLine(true);
+            url.setEllipsize(android.text.TextUtils.TruncateAt.MIDDLE);
+            words.addView(name);
+            words.addView(url);
+            row.addView(words, new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
+
+            Button remove = new Button(this);
+            remove.setText("Remove");
+            remove.setAllCaps(false);
+            remove.setTextColor(ORANGE);
+            GradientDrawable rb = new GradientDrawable();
+            rb.setColor(BG);
+            rb.setStroke(dp(1), ORANGE);
+            rb.setCornerRadius(dp(18));
+            remove.setBackground(rb);
+            remove.setOnClickListener(v -> new AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
+                    .setTitle("Remove \"" + l.name + "\"?")
+                    .setMessage("The button comes off your wheel. You can add it again any time.")
+                    .setPositiveButton("Remove", (d, w) -> {
+                        links.remove(idx);
+                        saveLinks();
+                    })
+                    .setNegativeButton("Cancel", null)
+                    .show());
+            row.addView(remove, new LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, dp(40)));
+            linkList.addView(row);
+        }
+    }
+
+    private void saveLinks() {
+        Prefs.saveLinks(this, links);
+        WheelService.appsChanged();
+        renderLinks();
+        refresh();
+    }
+
+    /** Add (index -1) or change a web link: name, address and color. */
+    private void editLink(int index) {
+        if (index < 0 && links.size() >= Prefs.MAX_LINKS) {
+            Toast.makeText(this, "The wheel holds " + Prefs.MAX_LINKS + " links. Remove one first.", Toast.LENGTH_SHORT).show();
+            return;
+        }
+        Prefs.Link old = index >= 0 ? links.get(index) : null;
+        LinearLayout box = new LinearLayout(this);
+        box.setOrientation(LinearLayout.VERTICAL);
+        box.setPadding(dp(20), dp(8), dp(20), 0);
+
+        box.addView(text("Name on the button", 13, MUTED, false));
+        EditText name = new EditText(this);
+        name.setSingleLine(true);
+        name.setHint("e.g. Jobs");
+        name.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_CAP_WORDS);
+        if (old != null) name.setText(old.name);
+        box.addView(name);
+
+        box.addView(text("Web address", 13, MUTED, false));
+        EditText url = new EditText(this);
+        url.setSingleLine(true);
+        url.setHint("https://...");
+        url.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_URI);
+        if (old != null) url.setText(old.url);
+        box.addView(url);
+
+        box.addView(text("Color", 13, MUTED, false));
+        final int[] pick = {old != null ? old.color : LINK_COLORS[links.size() % LINK_COLORS.length]};
+        LinearLayout swatches = new LinearLayout(this);
+        swatches.setOrientation(LinearLayout.HORIZONTAL);
+        final List<View> sw = new ArrayList<>();
+        for (int col : LINK_COLORS) {
+            View v = new View(this);
+            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(0, dp(34), 1f);
+            lp.setMargins(dp(3), dp(4), dp(3), dp(4));
+            v.setLayoutParams(lp);
+            v.setTag(col);
+            v.setOnClickListener(x -> {
+                pick[0] = (int) x.getTag();
+                paintSwatches(sw, pick[0]);
+            });
+            sw.add(v);
+            swatches.addView(v);
+        }
+        paintSwatches(sw, pick[0]);
+        box.addView(swatches);
+
+        AlertDialog dlg = new AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
+                .setTitle(old == null ? "Add a web link" : "Change link")
+                .setView(box)
+                .setPositiveButton("Save", null)
+                .setNegativeButton("Cancel", null)
+                .create();
+        dlg.setOnShowListener(x -> dlg.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v -> {
+            String n = name.getText().toString().trim();
+            String u = url.getText().toString().trim();
+            if (n.isEmpty()) { name.setError("Give it a name"); return; }
+            if (!u.matches("(?i)^[a-z][a-z0-9+.-]*://.*")) u = "https://" + u;
+            if (!Patterns.WEB_URL.matcher(u).matches()) { url.setError("That doesn't look like a web address"); return; }
+            Prefs.Link l = new Prefs.Link(n, u, pick[0]);
+            if (index >= 0) links.set(index, l); else links.add(l);
+            saveLinks();
+            dlg.dismiss();
+        }));
+        dlg.show();
+    }
+
+    private void paintSwatches(List<View> sw, int selected) {
+        for (View v : sw) {
+            int col = (int) v.getTag();
+            GradientDrawable g = new GradientDrawable();
+            g.setCornerRadius(dp(17));
+            g.setColor(col);
+            if (col == selected) g.setStroke(dp(3), 0xFFFFFFFF);
+            v.setBackground(g);
         }
     }
 

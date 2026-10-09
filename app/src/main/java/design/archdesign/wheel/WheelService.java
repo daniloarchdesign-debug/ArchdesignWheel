@@ -160,8 +160,9 @@ public class WheelService extends Service {
 
     void openWheel() {
         if (wheel != null) return;
-        wheel = new WheelView(this, Prefs.apps(this), new WheelView.Listener() {
+        wheel = new WheelView(this, Prefs.apps(this), Prefs.links(this), new WheelView.Listener() {
             @Override public void onLaunch(String pkg) { launch(pkg); }
+            @Override public void onOpenLink(String url) { openLink(url); }
             @Override public void onClose() { closeWheel(); }
             @Override public void onSettings() { openSettings(); }
             @Override public void onCompose() { compose(); }
@@ -194,6 +195,19 @@ public class WheelService extends Service {
             else startActivity(i);
         } catch (Exception e) {
             Toast.makeText(this, "No email app found.", Toast.LENGTH_SHORT).show();
+        }
+    }
+
+    /** Opens a web link from the wheel in the phone's browser (or the app that owns that site). */
+    private void openLink(String url) {
+        closeWheel();
+        Intent i = new Intent(Intent.ACTION_VIEW, Uri.parse(url));
+        i.addCategory(Intent.CATEGORY_BROWSABLE);
+        i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+        try {
+            startActivity(i);
+        } catch (Exception e) {
+            Toast.makeText(this, "Couldn't open that link.", Toast.LENGTH_SHORT).show();
         }
     }
 
