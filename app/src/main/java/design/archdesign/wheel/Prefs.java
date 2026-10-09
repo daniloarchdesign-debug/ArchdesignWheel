@@ -101,5 +101,8 @@ final class Prefs {
         sp(c).edit().putInt("x", x).putInt("y", y).apply();
     }
 
+    static int notifiedVersion(Context c) { return sp(c).getInt("notifiedVersion", 0); }
+    static void setNotifiedVersion(Context c, int v) { sp(c).edit().putInt("notifiedVersion", v).apply(); }
+
     static boolean autoStart(Context c) { return sp(c).getBoolean("autostart", true); }
 }

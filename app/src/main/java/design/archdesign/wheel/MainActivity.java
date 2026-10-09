@@ -3,6 +3,7 @@ package design.archdesign.wheel;
 import android.app.Activity;
 import android.app.AlertDialog;
 import android.content.Intent;
+import android.content.pm.PackageInstaller;
 import android.content.pm.PackageManager;
 import android.content.pm.ResolveInfo;
 import android.graphics.Typeface;
@@ -36,7 +37,9 @@ public class MainActivity extends Activity {
 
     private static final int BG = 0xFF03080F, INK = 0xFFDFF7FF, MUTED = 0xFF8FB3C7, CYAN = 0xFF00E5FF, ORANGE = 0xFFFF9A1F;
 
-    private TextView status;
+    private TextView status, updText;
+    private Button updBtn;
+    private String pendingApk;      // set while we wait for "allow installs" or the user's tap
     private Button permBtn, startBtn;
     private final Set<String> chosen = new LinkedHashSet<>();
     private List<Prefs.Link> links;
@@ -76,6 +79,11 @@ public class MainActivity extends Activity {
 
         status = text("", 15, ORANGE, true);
         root.addView(status);
+
+        updText = text("Version " + Updater.currentVersion(this) + "  \u00b7  updates itself: you get a notification when a new version is ready.", 13, MUTED, false);
+        root.addView(updText);
+        updBtn = button("Check for updates", v -> checkUpdate(true));
+        root.addView(updBtn);
         root.addView(text("3.  Web links on your wheel", 18, CYAN, true));
         root.addView(text("Any web address can be a button on the wheel. Tap a link below to change it.", 14, MUTED, false));
         linkList = new LinearLayout(this);
@@ -91,12 +99,88 @@ public class MainActivity extends Activity {
         root.addView(list);
         setContentView(scroll);
         fillApps(list);
+        handleIntent(getIntent());
+    }
+
+    @Override
+    protected void onNewIntent(Intent i) {
+        super.onNewIntent(i);
+        setIntent(i);
+        handleIntent(i);
+    }
+
+    // ---------- updates ----------
+
+    private void handleIntent(Intent i) {
+        if (i == null || i.getAction() == null) return;
+        if (Updater.ACTION_UPDATE.equals(i.getAction())) {
+            i.setAction(null);
+            checkUpdate(false);
+            pendingApk = "";            // install as soon as the check finds it
+        } else if (Updater.ACTION_INSTALL_STATUS.equals(i.getAction())) {
+            i.setAction(null);
+            int st = i.getIntExtra(PackageInstaller.EXTRA_STATUS, PackageInstaller.STATUS_FAILURE);
+            if (st == PackageInstaller.STATUS_PENDING_USER_ACTION) {
+                Intent confirm = i.getParcelableExtra(Intent.EXTRA_INTENT);
+                if (confirm != null) startActivity(confirm);
+                updText.setText("Tap Update on the Android screen to finish.");
+            } else if (st == PackageInstaller.STATUS_SUCCESS) {
+                updText.setText("Updated. The wheel restarts by itself.");
+            } else {
+                String msg = i.getStringExtra(PackageInstaller.EXTRA_STATUS_MESSAGE);
+                updText.setText("Update didn't finish" + (msg != null ? ": " + msg : ".") + "  Tap the button to try again.");
+                updBtn.setEnabled(true);
+            }
+        }
+    }
+
+    private void checkUpdate(boolean userTapped) {
+        if (pendingApk != null && !pendingApk.isEmpty() && userTapped) { startUpdate(pendingApk); return; }
+        updBtn.setEnabled(false);
+        updText.setText("Checking for a new version\u2026");
+        Updater.check(this, (latest, apk, err) -> {
+            updBtn.setEnabled(true);
+            int mine = Updater.currentVersion(this);
+            if (err != null) {
+                updText.setText("Couldn't check right now (" + err + ").");
+                pendingApk = null;
+            } else if (latest <= mine) {
+                updText.setText("Version " + mine + "  \u00b7  you have the newest version.");
+                pendingApk = null;
+            } else {
+                boolean auto = "".equals(pendingApk);
+                pendingApk = apk;
+                updText.setText("Version " + latest + " is ready (you have " + mine + ").");
+                updBtn.setText("Update to version " + latest);
+                if (auto) startUpdate(apk);
+            }
+        });
+    }
+
+    private void startUpdate(String apk) {
+        if (!Updater.canInstall(this)) {
+            Toast.makeText(this, "One time only: turn on \"Allow from this source\", then come back.", Toast.LENGTH_LONG).show();
+            startActivity(Updater.allowInstallsIntent(this));
+            return;                       // onResume carries on
+        }
+        updBtn.setEnabled(false);
+        updText.setText("Downloading the new version\u2026");
+        Updater.downloadAndInstall(this, apk, (x, y, err) -> {
+            if (err != null) {
+                updText.setText("Download failed (" + err + "). Tap the button to try again.");
+                updBtn.setEnabled(true);
+            }
+        });
     }
 
     @Override
     protected void onResume() {
         super.onResume();
         refresh();
+        if (pendingApk != null && !pendingApk.isEmpty() && updBtn.isEnabled() && Updater.canInstall(this)
+                && updText.getText().toString().endsWith("ready (you have " + Updater.currentVersion(this) + ").")) {
+            startUpdate(pendingApk);
+        }
     }
 
     private void refresh() {

@@ -32,6 +32,14 @@ public class WheelService extends Service {
     private WheelView wheel;
     private final Handler handler = new Handler(Looper.getMainLooper());
 
+    /** Looks for a new version 20 s after start, then every 6 hours. */
+    private final Runnable updateCheck = new Runnable() {
+        @Override public void run() {
+            Updater.checkAndNotify(WheelService.this);
+            handler.postDelayed(this, 6L * 60 * 60 * 1000);
+        }
+    };
+
     static void appsChanged() {
         if (instance != null) instance.handler.post(instance::closeWheel);
     }
@@ -46,6 +54,7 @@ public class WheelService extends Service {
         running = true;
         goForeground();
         wm = (WindowManager) getSystemService(WINDOW_SERVICE);
+        handler.postDelayed(updateCheck, 20000);
         try {
             addBubble();
         } catch (Exception e) {
@@ -228,6 +237,7 @@ public class WheelService extends Service {
 
     @Override
     public void onDestroy() {
+        handler.removeCallbacks(updateCheck);
         closeWheel();
         if (bubble != null) {
             try { wm.removeView(bubble); } catch (Exception ignored) {}
