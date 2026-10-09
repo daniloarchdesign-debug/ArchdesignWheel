@@ -207,16 +207,30 @@ public class WheelService extends Service {
         }
     }
 
-    /** Opens a web link from the wheel in the phone's browser (or the app that owns that site). */
+    /**
+     * Opens a web link from the wheel. It goes straight to Chrome (or Samsung Internet) so
+     * another app that claims the address, like the Claude app, can't swallow it.
+     */
     private void openLink(String url) {
         closeWheel();
-        Intent i = new Intent(Intent.ACTION_VIEW, Uri.parse(url));
-        i.addCategory(Intent.CATEGORY_BROWSABLE);
-        i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+        Uri u = Uri.parse(url);
+        Toast.makeText(this, "Opening " + u.getHost() + "\u2026", Toast.LENGTH_SHORT).show();
+        for (String browser : new String[]{"com.android.chrome", "com.sec.android.app.sbrowser"}) {
+            Intent i = new Intent(Intent.ACTION_VIEW, u).setPackage(browser);
+            i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            try {
+                startActivity(i);
+                return;
+            } catch (Exception ignored) {
+                // that browser isn't installed; try the next one
+            }
+        }
+        Intent any = new Intent(Intent.ACTION_VIEW, u);
+        any.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
         try {
-            startActivity(i);
+            startActivity(Intent.createChooser(any, "Open with").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
         } catch (Exception e) {
-            Toast.makeText(this, "Couldn't open that link.", Toast.LENGTH_SHORT).show();
+            Toast.makeText(this, "Couldn't open that link.", Toast.LENGTH_LONG).show();
         }
     }
 
